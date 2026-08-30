@@ -1,11 +1,12 @@
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import pytesseract
 import pandas as pd
 import os
 import io
+import tempfile
 
-st.set_page_config(page_title="BCA Master Receipt Editor", layout="wide")
+st.set_page_config(page_title="Expert Seamless Receipt Editor", layout="wide")
 
 hide_streamlit_style = """
     <style>
@@ -16,10 +17,9 @@ hide_streamlit_style = """
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-st.markdown("**🌐 BCA Master Precision Digital Receipt Editor**")
-st.markdown("Sistem penyelarasan otomatis dengan format mata uang standar BCA (`IDR [Nominal]`) dan pembersihan latar presisi.")
+st.markdown("**🌐 Expert Seamless Digital Receipt Editor**")
+st.markdown("Dilengkapi dengan *Seamless Mask Blending* untuk menyembunyikan kotak editan dan *Dynamic Tracking* untuk proporsi huruf.")
 
-# Deteksi font dari direktori GitHub
 FONT_DIR = "fonts"
 github_fonts = {}
 if os.path.exists(FONT_DIR) and os.path.isdir(FONT_DIR):
@@ -31,13 +31,21 @@ if os.path.exists(FONT_DIR) and os.path.isdir(FONT_DIR):
                 github_fonts[display_name] = full_path
 
 sorted_font_names = sorted(github_fonts.keys(), key=lambda name: ("italic" in name.lower(), name))
+font_options = sorted_font_names
+font_options.append("➕ Unggah Font Baru dari Komputer (Lokal)")
 
-if sorted_font_names:
-    selected_font_option = st.selectbox("Pilih Jenis Font Pendukung:", sorted_font_names)
-    font_path = github_fonts[selected_font_option]
+selected_font_option = st.selectbox("Pilih Jenis Font (Sangat disarankan: Roboto-Medium atau OpenSans-SemiBold):", font_options)
+
+font_path = None
+if selected_font_option == "➕ Unggah Font Baru dari Komputer (Lokal)":
+    local_font_file = st.file_uploader("📂 Unggah file font (.ttf / .otf):", type=["ttf", "otf"])
+    if local_font_file is not None:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".ttf") as tmp_font:
+            tmp_font.write(local_font_file.getvalue())
+            font_path = tmp_font.name
 else:
-    font_path = None
-    st.warning("⚠️ Folder 'fonts' kosong di GitHub. Menggunakan font default.")
+    if selected_font_option in github_fonts:
+        font_path = github_fonts[selected_font_option]
 
 uploaded_file = st.file_uploader("🖼️ Unggah Tangkapan Layar Bukti Transaksi (JPG/PNG)", type=["jpg", "jpeg", "png"])
 
@@ -45,7 +53,7 @@ if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
     width, height = image.size
     
-    with st.spinner("Menganalisis layout dan struktur nominal..."):
+    with st.spinner("Menganalisis layout..."):
         ocr_df = pytesseract.image_to_data(image, output_type=pytesseract.Output.DATAFRAME)
         ocr_df = ocr_df[ocr_df.text.notnull() & ocr_df.text.str.strip().astype(bool)].reset_index(drop=True)
         
@@ -90,22 +98,17 @@ if uploaded_file is not None:
     if len(line_df) > 0:
         st.dataframe(line_df[['text', 'left', 'top', 'width', 'height']], use_container_width=True)
 
-        st.markdown("**2. Masukkan Nominal Baru**")
-        selected_index = st.number_input(
-            "Pilih Baris Index yang Ingin Diubah:", 
-            min_value=0, 
-            max_value=len(line_df)-1, 
-            value=0, 
-            step=1
-        )
-        
+        st.markdown("**2. Pengaturan Teks Tingkat Lanjut**")
+        selected_index = st.number_input("Pilih Baris Index yang Ingin Diubah:", min_value=0, max_value=len(line_df)-1, value=0, step=1)
         target_row = line_df.iloc[selected_index]
         st.info(f"Baris Terpilih: **'{target_row['text']}'**")
         
         raw_input_text = st.text_input("Nominal Baru (Contoh: 450,000.00):", value="450,000.00")
+        
+        # Fitur khusus untuk mengatur jarak antar huruf agar tidak dempet
+        letter_spacing = st.slider("Atur Jarak Antar Huruf (Tracking):", min_value=0.0, max_value=8.0, value=2.0, step=0.5)
 
-        if st.button("✨ Eksekusi Format & Center Sempurna"):
-            # Otomatis merapikan format agar 'IDR' berada di depan sesuai standar aplikasi BCA
+        if st.button("✨ Eksekusi Manipulasi Expert"):
             clean_number = "".join(c for c in raw_input_text if c.isprintable()).strip()
             if not clean_number.startswith("IDR"):
                 final_display_text = f"IDR {clean_number}"
@@ -126,19 +129,22 @@ if uploaded_file is not None:
                 font = ImageFont.truetype(font_path, size=font_size) if font_path else ImageFont.load_default()
             except Exception:
                 font = ImageFont.load_default()
-                
-            dummy_draw = ImageDraw.Draw(edited_image)
-            try:
-                text_bbox = dummy_draw.textbbox((0, 0), final_display_text, font=font)
-                new_text_w = text_bbox[2] - text_bbox[0]
-            except Exception:
-                new_text_w = len(final_display_text) * (font_size * 0.5)
-                
-            # Penyelarasan tengah (True Center Alignment) berdasarkan kotak asli
-            original_center_x = x + (w / 2)
-            final_x = original_center_x - (new_text_w / 2)
             
-            clean_width = max(w, int(new_text_w)) + 80
+            # Menghitung lebar total teks dengan tambahan spacing
+            dummy_draw = ImageDraw.Draw(edited_image)
+            total_text_width = 0
+            for char in final_display_text:
+                try:
+                    char_width = font.getlength(char)
+                except AttributeError:
+                    char_width = dummy_draw.textbbox((0, 0), char, font=font)[2]
+                total_text_width += char_width + letter_spacing
+            total_text_width -= letter_spacing # Kurangi spacing lebih di akhir
+                
+            original_center_x = x + (w / 2)
+            final_x = original_center_x - (total_text_width / 2)
+            
+            clean_width = max(w, int(total_text_width)) + 70
             clean_left = int(original_center_x - (clean_width / 2))
             
             box_coords = (
@@ -148,18 +154,35 @@ if uploaded_file is not None:
                 min(height, y + h + 10)
             )
             
-            # Pengambilan sampel warna latar belakang secara akurat
             try:
-                sample_color = image.getpixel((max(0, clean_left - 5), y + (h // 2)))
+                sample_color = image.getpixel((max(0, clean_left - 10), y + (h // 2)))
             except Exception:
-                sample_color = (255, 255, 255)
-                
-            draw.rectangle(box_coords, fill=sample_color)
+                sample_color = (244, 246, 249) # Warna fallback abu-abu muda
             
-            # Warna biru gelap khas teks nominal BCA
+            # --- SEAMLESS MASK BLENDING (Teknik Expert) ---
+            # Membuat mask dengan efek blur agar kotak latar belakang menyatu halus tanpa memotong watermark
+            mask = Image.new("L", image.size, 0)
+            mask_draw = ImageDraw.Draw(mask)
+            inner_coords = (box_coords[0]+8, box_coords[1]+4, box_coords[2]-8, box_coords[3]-4)
+            mask_draw.rectangle(inner_coords, fill=255)
+            mask = mask.filter(ImageFilter.GaussianBlur(radius=6))
+            
+            bg_layer = Image.new("RGB", image.size, sample_color)
+            edited_image.paste(bg_layer, (0, 0), mask)
+            
             text_color = (13, 37, 63)
             
-            draw.text((final_x, y), final_display_text, fill=text_color, font=font)
+            # --- DYNAMIC TEXT RENDERING ---
+            # Merender teks per karakter agar tracking bisa diaplikasikan
+            current_x = final_x
+            actual_draw = ImageDraw.Draw(edited_image)
+            for char in final_display_text:
+                actual_draw.text((current_x, y), char, fill=text_color, font=font)
+                try:
+                    char_w = font.getlength(char)
+                except AttributeError:
+                    char_w = actual_draw.textbbox((0, 0), char, font=font)[2]
+                current_x += char_w + letter_spacing
             
             st.markdown("**🎯 Hasil Tangkapan Layar Termodifikasi Sempurna**")
             st.image(edited_image, use_container_width=True)
@@ -169,7 +192,7 @@ if uploaded_file is not None:
             st.download_button(
                 label="📥 Unduh Hasil Manipulasi (PNG)",
                 data=buf.getvalue(),
-                file_name="bca_receipt_perfect.png",
+                file_name="bca_expert_edited.png",
                 mime="image/png"
             )
     else:
