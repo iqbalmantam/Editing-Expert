@@ -6,7 +6,7 @@ import os
 import tempfile
 import io
 
-st.set_page_config(page_title="Perfect Center Receipt Editor", layout="wide")
+st.set_page_config(page_title="BCA Perfect Center Receipt Editor", layout="wide")
 
 hide_streamlit_style = """
     <style>
@@ -17,8 +17,8 @@ hide_streamlit_style = """
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-st.title("🌐 Image Editor")
-st.markdown("Edit Text pada Image.")
+st.title("🌐 BCA Perfect Center Digital Receipt Editor")
+st.markdown("Sistem penyelarasan tengah otomatis dengan pelindung anti-kotak kosong (missing glyph fallback).")
 
 FONT_DIR = "fonts"
 github_fonts = {}
