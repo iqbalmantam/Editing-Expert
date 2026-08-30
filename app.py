@@ -1,10 +1,10 @@
 import streamlit as st
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import pytesseract
 import pandas as pd
 import io
 
-st.set_page_config(page_title="Pixel-Perfect Glyph Stitching Editor", layout="wide")
+st.set_page_config(page_title="Precision Receipt Text Editor", layout="wide")
 
 hide_streamlit_style = """
     <style>
@@ -15,8 +15,8 @@ hide_streamlit_style = """
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-st.markdown("**🌐 Pixel-Perfect Glyph Stitching & Character Cloning Editor**")
-st.markdown("Sistem kloning piksel tingkat lanjut yang merakit ulang karakter asli dari gambar untuk hasil editan yang 100% identik.")
+st.markdown("**🌐 Precision Digital Receipt Editor**")
+st.markdown("Sistem pembersihan blok cerdas dengan pencocokan warna piksel asli dan penataan posisi teks yang presisi.")
 
 uploaded_file = st.file_uploader("Unggah tangkapan layar bukti transaksi (JPG/PNG)", type=["jpg", "jpeg", "png"])
 
@@ -24,28 +24,7 @@ if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
     img_w, img_h = image.size
     
-    with st.spinner("Mengekstrak dan memetakan karakter piksel asli..."):
-        # 1. Ekstraksi Kotak Karakter Individual (Glyph Extraction)
-        boxes_data = pytesseract.image_to_boxes(image)
-        glyph_dict = {}
-        
-        for line in boxes_data.splitlines():
-            parts = line.split()
-            if len(parts) == 6:
-                char, xmin, ymin, xmax, ymax, _ = parts
-                xmin, ymin, xmax, ymax = int(xmin), int(ymin), int(xmax), int(ymax)
-                
-                # Konversi koordinat Tesseract (bottom-left origin) ke PIL (top-left origin)
-                pil_box = (xmin, img_h - ymax, xmax, img_h -ymin)
-                
-                # Pastikan koordinat valid dan crop karakter
-                if pil_box[2] > pil_box[0] and pil_box[3] > pil_box[1]:
-                    char_crop = image.crop(pil_box)
-                    # Simpan glyph terbaik (prioritaskan jika belum ada)
-                    if char not in glyph_dict:
-                        glyph_dict[char] = char_crop
-
-        # 2. Deteksi Baris Teks untuk Pemilihan Target
+    with st.spinner("Menganalisis tata letak dan struktur baris..."):
         ocr_df = pytesseract.image_to_data(image, output_type=pytesseract.Output.DATAFRAME)
         ocr_df = ocr_df[ocr_df.text.notnull() & ocr_df.text.str.strip().astype(bool)].reset_index(drop=True)
         
@@ -90,7 +69,7 @@ if uploaded_file is not None:
     if len(line_df) > 0:
         st.dataframe(line_df[['text', 'left', 'top', 'width', 'height']], use_container_width=True)
 
-        st.markdown("**2. Masukkan Teks Baru untuk Dirakit Otomatis**")
+        st.markdown("**2. Masukkan Teks Baru**")
         selected_index = st.number_input(
             "Pilih Baris Index yang Ingin Diubah:", 
             min_value=0, 
@@ -104,7 +83,7 @@ if uploaded_file is not None:
         
         new_text = st.text_input("Teks/Nominal Baru:", value=target_row['text'])
 
-        if st.button("✨ Eksekusi Kloning Karakter Sempurna"):
+        if st.button("✨ Eksekusi Pembersihan & Render Sempurna"):
             edited_image = image.copy()
             draw = ImageDraw.Draw(edited_image)
             
@@ -113,14 +92,36 @@ if uploaded_file is not None:
             w = int(target_row['width'])
             h = int(target_row['height'])
             
-            # Perhitungan area pembersihan latar belakang agar teks lama lenyap total
+            # Tentukan ukuran font yang proporsional berdasarkan tinggi baris asli
+            font_size = max(14, int(h * 0.85))
+            
+            try:
+                font = ImageFont.truetype("font.ttf", size=font_size)
+            except Exception:
+                try:
+                    font = ImageFont.load_default(size=font_size)
+                except TypeError:
+                    font = ImageFont.load_default()
+            
+            # Hitung lebar teks baru untuk menentukan area hapus yang pas
+            dummy_draw = ImageDraw.Draw(edited_image)
+            try:
+                text_bbox = dummy_draw.textbbox((0, 0), new_text, font=font)
+                new_text_w = text_bbox[2] - text_bbox[0]
+            except Exception:
+                new_text_w = len(new_text) * (font_size * 0.5)
+                
+            total_clean_w = max(w, int(new_text_w)) + 20
+            
+            # Kotak pembersihan latar belakang agar teks lama hilang total tanpa sisa
             box_coords = (
-                max(0, x - 10), 
+                max(0, x - 5), 
                 max(0, y - 4), 
-                min(img_w, x + w + 25), 
+                min(img_w, x + total_clean_w), 
                 min(img_h, y + h + 6)
             )
             
+            # Sampel warna latar belakang dari sisi kiri teks
             try:
                 sample_color = image.getpixel((max(0, x - 5), y + (h // 2)))
             except Exception:
@@ -128,32 +129,12 @@ if uploaded_file is not None:
                 
             draw.rectangle(box_coords, fill=sample_color)
             
-            # 3. Proses Perakitan Glyph (Stitching Matrix)
-            current_x = x
-            stitching_success = True
+            # Gunakan warna teks standar perbankan digital (biru gelap pekat)
+            text_color = (24, 34, 54)
             
-            for char in new_text:
-                if char in glyph_dict:
-                    glyph_img = glyph_dict[char]
-                    # Tempelkan potongan karakter asli ke posisi target
-                    edited_image.paste(glyph_img, (current_x, y), glyph_img.convert("RGBA"))
-                    current_x += glyph_img.width
-                elif char == " ":
-                    current_x += 10  # Spasi manual jika karakter spasi
-                else:
-                    stitching_success = False
-                    break
+            # Render teks baru secara bersih pada koordinat asal
+            draw.text((x, y), new_text, fill=text_color, font=font)
             
-            # Fallback jika ada karakter yang tidak memiliki sampel glyph di gambar
-            if not stitching_success or current_x == x:
-                st.warning("⚠️ Sebagian karakter baru tidak ditemukan sampelnya di gambar ini. Menggunakan render teks standar.")
-                from PIL import ImageFont
-                try:
-                    font = ImageFont.load_default()
-                except Exception:
-                    font = None
-                draw.text((x, y), new_text, fill=(24, 34, 54), font=font)
-
             st.markdown("**🎯 Hasil Tangkapan Layar Termodifikasi Sempurna**")
             st.image(edited_image, use_container_width=True)
             
@@ -162,7 +143,7 @@ if uploaded_file is not None:
             st.download_button(
                 label="📥 Unduh Hasil Manipulasi (PNG)",
                 data=buf.getvalue(),
-                file_name="glyph_stitched_receipt.png",
+                file_name="clean_receipt_edited.png",
                 mime="image/png"
             )
     else:
