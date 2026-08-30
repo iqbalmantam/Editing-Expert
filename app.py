@@ -1,14 +1,11 @@
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 import pytesseract
 import pandas as pd
-import os
-import tempfile
 import io
 
-st.set_page_config(page_title="Smart Hybrid Font Receipt Editor", layout="wide")
+st.set_page_config(page_title="Pixel-Perfect Glyph Stitching Editor", layout="wide")
 
-# Menyembunyikan Header, Footer, dan Menu bawaan Streamlit (termasuk ikon GitHub)
 hide_streamlit_style = """
     <style>
     #MainMenu {visibility: hidden;}
@@ -18,45 +15,37 @@ hide_streamlit_style = """
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-st.title("🌐 Smart Hybrid Font Digital Receipt Editor")
-st.markdown("Sistem pemindaian cerdas yang mendeteksi pustaka font di GitHub, dengan opsi unggah lokal otomatis jika tidak tersedia.")
+st.markdown("**🌐 Pixel-Perfect Glyph Stitching & Character Cloning Editor**")
+st.markdown("Sistem kloning piksel tingkat lanjut yang merakit ulang karakter asli dari gambar untuk hasil editan yang 100% identik.")
 
-# 1. Pengecekan Pustaka Font di GitHub
-FONT_DIR = "fonts"
-github_fonts = {}
-if os.path.exists(FONT_DIR) and os.path.isdir(FONT_DIR):
-    for root, dirs, files in os.walk(FONT_DIR):
-        for file in files:
-            if file.endswith(".ttf"):
-                full_path = os.path.join(root, file)
-                display_name = os.path.relpath(full_path, FONT_DIR)
-                github_fonts[display_name] = full_path
-
-# Membuat daftar pilihan font (Gabungan GitHub + Opsi Lokal)
-font_options = list(github_fonts.keys())
-font_options.append("➕ Unggah Font Baru dari Komputer (Lokal)")
-
-selected_font_option = st.selectbox("Pilih Jenis Font:", font_options)
-
-font_path = None
-if selected_font_option == "➕ Unggah Font Baru dari Komputer (Lokal)":
-    local_font_file = st.file_uploader("📂 Unggah file font (.ttf) dari komputer Anda:", type=["ttf"])
-    if local_font_file is not None:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".ttf") as tmp_font:
-            tmp_font.write(local_font_file.getvalue())
-            font_path = tmp_font.name
-else:
-    if selected_font_option in github_fonts:
-        font_path = github_fonts[selected_font_option]
-
-# 2. Unggah Gambar Tangkapan Layar
-uploaded_file = st.file_uploader("🖼️ Unggah Tangkapan Layar Bukti Transaksi (JPG/PNG)", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Unggah tangkapan layar bukti transaksi (JPG/PNG)", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
-    width, height = image.size
+    img_w, img_h = image.size
     
-    with st.spinner("Memindai struktur layout dan token teks secara cerdas..."):
+    with st.spinner("Mengekstrak dan memetakan karakter piksel asli..."):
+        # 1. Ekstraksi Kotak Karakter Individual (Glyph Extraction)
+        boxes_data = pytesseract.image_to_boxes(image)
+        glyph_dict = {}
+        
+        for line in boxes_data.splitlines():
+            parts = line.split()
+            if len(parts) == 6:
+                char, xmin, ymin, xmax, ymax, _ = parts
+                xmin, ymin, xmax, ymax = int(xmin), int(ymin), int(xmax), int(ymax)
+                
+                # Konversi koordinat Tesseract (bottom-left origin) ke PIL (top-left origin)
+                pil_box = (xmin, img_h - ymax, xmax, img_h -ymin)
+                
+                # Pastikan koordinat valid dan crop karakter
+                if pil_box[2] > pil_box[0] and pil_box[3] > pil_box[1]:
+                    char_crop = image.crop(pil_box)
+                    # Simpan glyph terbaik (prioritaskan jika belum ada)
+                    if char not in glyph_dict:
+                        glyph_dict[char] = char_crop
+
+        # 2. Deteksi Baris Teks untuk Pemilihan Target
         ocr_df = pytesseract.image_to_data(image, output_type=pytesseract.Output.DATAFRAME)
         ocr_df = ocr_df[ocr_df.text.notnull() & ocr_df.text.str.strip().astype(bool)].reset_index(drop=True)
         
@@ -101,7 +90,7 @@ if uploaded_file is not None:
     if len(line_df) > 0:
         st.dataframe(line_df[['text', 'left', 'top', 'width', 'height']], use_container_width=True)
 
-        st.markdown("**2. Masukkan Teks Baru**")
+        st.markdown("**2. Masukkan Teks Baru untuk Dirakit Otomatis**")
         selected_index = st.number_input(
             "Pilih Baris Index yang Ingin Diubah:", 
             min_value=0, 
@@ -115,7 +104,7 @@ if uploaded_file is not None:
         
         new_text = st.text_input("Teks/Nominal Baru:", value=target_row['text'])
 
-        if st.button("✨ Eksekusi Auto-Manipulasi Sempurna"):
+        if st.button("✨ Eksekusi Kloning Karakter Sempurna"):
             edited_image = image.copy()
             draw = ImageDraw.Draw(edited_image)
             
@@ -124,32 +113,12 @@ if uploaded_file is not None:
             w = int(target_row['width'])
             h = int(target_row['height'])
             
-            # Ukuran font otomatis proporsional berdasarkan tinggi baris asli
-            font_size = max(14, int(h * 0.9))
-            
-            try:
-                if font_path:
-                    font = ImageFont.truetype(font_path, size=font_size)
-                else:
-                    font = ImageFont.load_default()
-                    st.warning("⚠️ Belum ada font yang dipilih atau diunggah. Menggunakan font default sistem.")
-            except Exception:
-                font = ImageFont.load_default()
-                
-            dummy_draw = ImageDraw.Draw(edited_image)
-            try:
-                text_bbox = dummy_draw.textbbox((0, 0), new_text, font=font)
-                new_text_w = text_bbox[2] - text_bbox[0]
-            except Exception:
-                new_text_w = len(new_text) * (font_size * 0.5)
-                
-            total_clean_w = max(w, int(new_text_w)) + 25
-            
+            # Perhitungan area pembersihan latar belakang agar teks lama lenyap total
             box_coords = (
-                max(0, x - 5), 
+                max(0, x - 10), 
                 max(0, y - 4), 
-                min(width, x + total_clean_w), 
-                min(height, y + h + 6)
+                min(img_w, x + w + 25), 
+                min(img_h, y + h + 6)
             )
             
             try:
@@ -159,10 +128,32 @@ if uploaded_file is not None:
                 
             draw.rectangle(box_coords, fill=sample_color)
             
-            text_color = (24, 34, 54) # Warna standar teks perbankan digital
+            # 3. Proses Perakitan Glyph (Stitching Matrix)
+            current_x = x
+            stitching_success = True
             
-            draw.text((x, y), new_text, fill=text_color, font=font)
+            for char in new_text:
+                if char in glyph_dict:
+                    glyph_img = glyph_dict[char]
+                    # Tempelkan potongan karakter asli ke posisi target
+                    edited_image.paste(glyph_img, (current_x, y), glyph_img.convert("RGBA"))
+                    current_x += glyph_img.width
+                elif char == " ":
+                    current_x += 10  # Spasi manual jika karakter spasi
+                else:
+                    stitching_success = False
+                    break
             
+            # Fallback jika ada karakter yang tidak memiliki sampel glyph di gambar
+            if not stitching_success or current_x == x:
+                st.warning("⚠️ Sebagian karakter baru tidak ditemukan sampelnya di gambar ini. Menggunakan render teks standar.")
+                from PIL import ImageFont
+                try:
+                    font = ImageFont.load_default()
+                except Exception:
+                    font = None
+                draw.text((x, y), new_text, fill=(24, 34, 54), font=font)
+
             st.markdown("**🎯 Hasil Tangkapan Layar Termodifikasi Sempurna**")
             st.image(edited_image, use_container_width=True)
             
@@ -171,7 +162,7 @@ if uploaded_file is not None:
             st.download_button(
                 label="📥 Unduh Hasil Manipulasi (PNG)",
                 data=buf.getvalue(),
-                file_name="master_receipt_edited.png",
+                file_name="glyph_stitched_receipt.png",
                 mime="image/png"
             )
     else:
