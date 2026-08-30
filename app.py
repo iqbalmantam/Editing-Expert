@@ -18,9 +18,9 @@ hide_streamlit_style = """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 st.title("🌐 BCA Perfect Center Digital Receipt Editor")
-st.markdown("Sistem penyelarasan tengah otomatis untuk hasil suntingan nominal yang simetris dan natural.")
+st.markdown("Sistem pembersihan latar dan penyelarasan tengah otomatis dengan prioritas font tegak (non-italic).")
 
-# Pilihan font: GitHub atau Upload Lokal
+# Pemilahan font cerdas: Otomatis mendahulukan font tegak (non-italic)
 FONT_DIR = "fonts"
 github_fonts = {}
 if os.path.exists(FONT_DIR) and os.path.isdir(FONT_DIR):
@@ -31,14 +31,17 @@ if os.path.exists(FONT_DIR) and os.path.isdir(FONT_DIR):
                 display_name = os.path.relpath(full_path, FONT_DIR)
                 github_fonts[display_name] = full_path
 
-font_options = list(github_fonts.keys())
+# Urutkan agar font non-italic berada di urutan teratas pilihan
+sorted_font_names = sorted(github_fonts.keys(), key=lambda name: ("italic" in name.lower(), name))
+
+font_options = sorted_font_names
 font_options.append("➕ Unggah Font Baru dari Komputer (Lokal)")
 
-selected_font_option = st.selectbox("Pilih Jenis Font:", font_options)
+selected_font_option = st.selectbox("Pilih Jenis Font (Disarankan pilih yang tegak/non-italic):", font_options)
 
 font_path = None
 if selected_font_option == "➕ Unggah Font Baru dari Komputer (Lokal)":
-    local_font_file = st.file_uploader("📂 Unggah file font (.ttf / .otf):", type=["ttf", "otf"])
+    local_font_file = st.file_uploader("📂 Unggah file font tegak (.ttf / .otf):", type=["ttf", "otf"])
     if local_font_file is not None:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".ttf") as tmp_font:
             tmp_font.write(local_font_file.getvalue())
@@ -121,7 +124,6 @@ if uploaded_file is not None:
             w = int(target_row['width'])
             h = int(target_row['height'])
             
-            # Ukuran font proporsional
             font_size = max(16, int(h * 0.95))
             
             try:
@@ -132,7 +134,6 @@ if uploaded_file is not None:
             except Exception:
                 font = ImageFont.load_default()
                 
-            # Hitung dimensi teks baru untuk kalkulasi titik tengah
             dummy_draw = ImageDraw.Draw(edited_image)
             try:
                 text_bbox = dummy_draw.textbbox((0, 0), new_text, font=font)
@@ -140,12 +141,9 @@ if uploaded_file is not None:
             except Exception:
                 new_text_w = len(new_text) * (font_size * 0.5)
                 
-            # Titik tengah kotak asli
             original_center_x = x + (w / 2)
-            # Posisi X baru agar teks benar-benar berada di tengah
             final_x = original_center_x - (new_text_w / 2)
             
-            # Area pembersihan latar belakang yang simetris di tengah
             clean_width = max(w, int(new_text_w)) + 60
             clean_left = int(original_center_x - (clean_width / 2))
             
@@ -156,7 +154,6 @@ if uploaded_file is not None:
                 min(height, y + h + 8)
             )
             
-            # Ambil sampel warna latar belakang
             try:
                 sample_color = image.getpixel((max(0, clean_left - 5), y + (h // 2)))
             except Exception:
@@ -164,10 +161,8 @@ if uploaded_file is not None:
                 
             draw.rectangle(box_coords, fill=sample_color)
             
-            # Warna teks biru gelap khas BCA
-            text_color = (13, 37, 63)
+            text_color = (13, 37, 63) # Warna biru gelap pekat khas BCA
             
-            # Render teks baru dengan posisi rata tengah yang presisi
             draw.text((final_x, y), new_text, fill=text_color, font=font)
             
             st.markdown("**🎯 Hasil Tangkapan Layar Termodifikasi Sempurna**")
