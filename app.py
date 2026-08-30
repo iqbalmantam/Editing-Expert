@@ -87,11 +87,11 @@ if uploaded_file is not None:
             
         line_df = pd.DataFrame(grouped_lines)
 
-    **1. Daftar Baris Teks Terdeteksi**
+    st.markdown("**1. Daftar Baris Teks Terdeteksi**")
     if len(line_df) > 0:
         st.dataframe(line_df[['text', 'left', 'top', 'width', 'height']], use_container_width=True)
 
-        **2. Masukkan Teks Baru**
+        st.markdown("**2. Masukkan Teks Baru**")
         selected_index = st.number_input(
             "Pilih Baris Index yang Ingin Diubah:", 
             min_value=0, 
@@ -156,7 +156,7 @@ if uploaded_file is not None:
             # Merender teks yang sudah disanitasi
             draw.text((final_x, y), safe_new_text, fill=text_color, font=font)
             
-            **🎯 Hasil Tangkapan Layar Termodifikasi Sempurna**
+            st.markdown("**🎯 Hasil Tangkapan Layar Termodifikasi Sempurna**")
             st.image(edited_image, use_container_width=True)
             
             buf = io.BytesIO()
