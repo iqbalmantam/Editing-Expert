@@ -3,7 +3,6 @@ from PIL import Image, ImageDraw, ImageFont
 import pytesseract
 import pandas as pd
 import os
-import tempfile
 import io
 
 st.set_page_config(page_title="BCA Perfect Center Receipt Editor", layout="wide")
@@ -17,35 +16,29 @@ hide_streamlit_style = """
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-st.title("🌐 BCA Perfect Center Digital Receipt Editor")
-st.markdown("Sistem penyelarasan tengah otomatis dengan pelindung anti-kotak kosong (missing glyph fallback).")
+st.markdown("**🌐 BCA Perfect Center Digital Receipt Editor**")
+st.markdown("Sistem penyelarasan tengah dengan filter sanitasi karakter otomatis untuk mencegah kemunculan kotak kosong.")
 
+# Deteksi font eksklusif dari direktori GitHub
 FONT_DIR = "fonts"
 github_fonts = {}
 if os.path.exists(FONT_DIR) and os.path.isdir(FONT_DIR):
     for root, dirs, files in os.walk(FONT_DIR):
         for file in files:
-            if file.endswith(".ttf"):
+            if file.endswith(".ttf") or file.endswith(".otf"):
                 full_path = os.path.join(root, file)
                 display_name = os.path.relpath(full_path, FONT_DIR)
                 github_fonts[display_name] = full_path
 
+# Prioritaskan font tegak (non-italic) di urutan atas
 sorted_font_names = sorted(github_fonts.keys(), key=lambda name: ("italic" in name.lower(), name))
-font_options = sorted_font_names
-font_options.append("➕ Unggah Font Baru dari Komputer (Lokal)")
 
-selected_font_option = st.selectbox("Pilih Jenis Font (Gunakan font standar/regular agar karakter terbaca sempurna):", font_options)
-
-font_path = None
-if selected_font_option == "➕ Unggah Font Baru dari Komputer (Lokal)":
-    local_font_file = st.file_uploader("📂 Unggah file font (.ttf / .otf):", type=["ttf", "otf"])
-    if local_font_file is not None:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".ttf") as tmp_font:
-            tmp_font.write(local_font_file.getvalue())
-            font_path = tmp_font.name
+if sorted_font_names:
+    selected_font_option = st.selectbox("Pilih Jenis Font (Pastikan font mendukung angka dan huruf):", sorted_font_names)
+    font_path = github_fonts[selected_font_option]
 else:
-    if selected_font_option in github_fonts:
-        font_path = github_fonts[selected_font_option]
+    font_path = None
+    st.warning("⚠️ Folder 'fonts' tidak ditemukan atau kosong di GitHub Anda. Menggunakan font default sistem.")
 
 uploaded_file = st.file_uploader("🖼️ Unggah Tangkapan Layar Bukti Transaksi (JPG/PNG)", type=["jpg", "jpeg", "png"])
 
@@ -94,11 +87,11 @@ if uploaded_file is not None:
             
         line_df = pd.DataFrame(grouped_lines)
 
-    st.markdown("**1. Daftar Baris Teks Terdeteksi**")
+    **1. Daftar Baris Teks Terdeteksi**
     if len(line_df) > 0:
         st.dataframe(line_df[['text', 'left', 'top', 'width', 'height']], use_container_width=True)
 
-        st.markdown("**2. Masukkan Teks Baru**")
+        **2. Masukkan Teks Baru**
         selected_index = st.number_input(
             "Pilih Baris Index yang Ingin Diubah:", 
             min_value=0, 
@@ -113,6 +106,9 @@ if uploaded_file is not None:
         new_text = st.text_input("Teks/Nominal Baru:", value=target_row['text'])
 
         if st.button("✨ Eksekusi Auto-Center Sempurna"):
+            # Filter agresif untuk membuang karakter tersembunyi penyebab kotak kosong
+            safe_new_text = "".join(c for c in new_text if c.isprintable()).strip()
+            
             edited_image = image.copy()
             draw = ImageDraw.Draw(edited_image)
             
@@ -123,23 +119,17 @@ if uploaded_file is not None:
             
             font_size = max(16, int(h * 0.95))
             
-            # Pemuatan font dengan pengaman ganda agar terhindar dari karakter kosong
-            font = None
-            if font_path:
-                try:
-                    font = ImageFont.truetype(font_path, size=font_size)
-                except Exception:
-                    pass
-            
-            if font is None:
+            try:
+                font = ImageFont.truetype(font_path, size=font_size) if font_path else ImageFont.load_default()
+            except Exception:
                 font = ImageFont.load_default()
                 
             dummy_draw = ImageDraw.Draw(edited_image)
             try:
-                text_bbox = dummy_draw.textbbox((0, 0), new_text, font=font)
+                text_bbox = dummy_draw.textbbox((0, 0), safe_new_text, font=font)
                 new_text_w = text_bbox[2] - text_bbox[0]
             except Exception:
-                new_text_w = len(new_text) * (font_size * 0.5)
+                new_text_w = len(safe_new_text) * (font_size * 0.5)
                 
             original_center_x = x + (w / 2)
             final_x = original_center_x - (new_text_w / 2)
@@ -163,9 +153,10 @@ if uploaded_file is not None:
             
             text_color = (13, 37, 63)
             
-            draw.text((final_x, y), new_text, fill=text_color, font=font)
+            # Merender teks yang sudah disanitasi
+            draw.text((final_x, y), safe_new_text, fill=text_color, font=font)
             
-            st.markdown("**🎯 Hasil Tangkapan Layar Termodifikasi Sempurna**")
+            **🎯 Hasil Tangkapan Layar Termodifikasi Sempurna**
             st.image(edited_image, use_container_width=True)
             
             buf = io.BytesIO()
