@@ -5,7 +5,7 @@ import pandas as pd
 import os
 import io
 
-st.set_page_config(page_title="BCA Ultimate Supersampling Editor", layout="wide")
+st.set_page_config(page_title="Ultimate Supersampling Editor", layout="wide")
 
 hide_streamlit_style = """
     <style>
@@ -16,7 +16,7 @@ hide_streamlit_style = """
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-st.markdown("**🌐 BCA Ultimate Supersampling Receipt Editor**")
+st.markdown("**🌐 Ultimate Supersampling Receipt Editor**")
 st.markdown("Menggunakan teknik render teks resolusi 4x lipat (LANCZOS Anti-Aliasing) untuk hasil tepian huruf yang sangat halus dan realistis.")
 
 # --- MANAJEMEN FONT EKSKLUSIF GITHUB ---
