@@ -2,9 +2,11 @@ import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 import pytesseract
 import pandas as pd
+import os
+import tempfile
 import io
 
-st.set_page_config(page_title="Precision Receipt Text Editor", layout="wide")
+st.set_page_config(page_title="BCA Perfect Center Receipt Editor", layout="wide")
 
 hide_streamlit_style = """
     <style>
@@ -15,16 +17,43 @@ hide_streamlit_style = """
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-st.markdown("**🌐 Precision Digital Receipt Editor**")
-st.markdown("Sistem pembersihan blok cerdas dengan pencocokan warna piksel asli dan penataan posisi teks yang presisi.")
+st.title("🌐 BCA Perfect Center Digital Receipt Editor")
+st.markdown("Sistem penyelarasan tengah otomatis untuk hasil suntingan nominal yang simetris dan natural.")
 
-uploaded_file = st.file_uploader("Unggah tangkapan layar bukti transaksi (JPG/PNG)", type=["jpg", "jpeg", "png"])
+# Pilihan font: GitHub atau Upload Lokal
+FONT_DIR = "fonts"
+github_fonts = {}
+if os.path.exists(FONT_DIR) and os.path.isdir(FONT_DIR):
+    for root, dirs, files in os.walk(FONT_DIR):
+        for file in files:
+            if file.endswith(".ttf"):
+                full_path = os.path.join(root, file)
+                display_name = os.path.relpath(full_path, FONT_DIR)
+                github_fonts[display_name] = full_path
+
+font_options = list(github_fonts.keys())
+font_options.append("➕ Unggah Font Baru dari Komputer (Lokal)")
+
+selected_font_option = st.selectbox("Pilih Jenis Font:", font_options)
+
+font_path = None
+if selected_font_option == "➕ Unggah Font Baru dari Komputer (Lokal)":
+    local_font_file = st.file_uploader("📂 Unggah file font (.ttf / .otf):", type=["ttf", "otf"])
+    if local_font_file is not None:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".ttf") as tmp_font:
+            tmp_font.write(local_font_file.getvalue())
+            font_path = tmp_font.name
+else:
+    if selected_font_option in github_fonts:
+        font_path = github_fonts[selected_font_option]
+
+uploaded_file = st.file_uploader("🖼️ Unggah Tangkapan Layar Bukti Transaksi (JPG/PNG)", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
-    img_w, img_h = image.size
+    width, height = image.size
     
-    with st.spinner("Menganalisis tata letak dan struktur baris..."):
+    with st.spinner("Menganalisis layout dan struktur teks..."):
         ocr_df = pytesseract.image_to_data(image, output_type=pytesseract.Output.DATAFRAME)
         ocr_df = ocr_df[ocr_df.text.notnull() & ocr_df.text.str.strip().astype(bool)].reset_index(drop=True)
         
@@ -83,7 +112,7 @@ if uploaded_file is not None:
         
         new_text = st.text_input("Teks/Nominal Baru:", value=target_row['text'])
 
-        if st.button("✨ Eksekusi Pembersihan & Render Sempurna"):
+        if st.button("✨ Eksekusi Auto-Center Sempurna"):
             edited_image = image.copy()
             draw = ImageDraw.Draw(edited_image)
             
@@ -92,18 +121,18 @@ if uploaded_file is not None:
             w = int(target_row['width'])
             h = int(target_row['height'])
             
-            # Tentukan ukuran font yang proporsional berdasarkan tinggi baris asli
-            font_size = max(14, int(h * 0.85))
+            # Ukuran font proporsional
+            font_size = max(16, int(h * 0.95))
             
             try:
-                font = ImageFont.truetype("font.ttf", size=font_size)
-            except Exception:
-                try:
-                    font = ImageFont.load_default(size=font_size)
-                except TypeError:
+                if font_path:
+                    font = ImageFont.truetype(font_path, size=font_size)
+                else:
                     font = ImageFont.load_default()
-            
-            # Hitung lebar teks baru untuk menentukan area hapus yang pas
+            except Exception:
+                font = ImageFont.load_default()
+                
+            # Hitung dimensi teks baru untuk kalkulasi titik tengah
             dummy_draw = ImageDraw.Draw(edited_image)
             try:
                 text_bbox = dummy_draw.textbbox((0, 0), new_text, font=font)
@@ -111,29 +140,35 @@ if uploaded_file is not None:
             except Exception:
                 new_text_w = len(new_text) * (font_size * 0.5)
                 
-            total_clean_w = max(w, int(new_text_w)) + 20
+            # Titik tengah kotak asli
+            original_center_x = x + (w / 2)
+            # Posisi X baru agar teks benar-benar berada di tengah
+            final_x = original_center_x - (new_text_w / 2)
             
-            # Kotak pembersihan latar belakang agar teks lama hilang total tanpa sisa
+            # Area pembersihan latar belakang yang simetris di tengah
+            clean_width = max(w, int(new_text_w)) + 60
+            clean_left = int(original_center_x - (clean_width / 2))
+            
             box_coords = (
-                max(0, x - 5), 
-                max(0, y - 4), 
-                min(img_w, x + total_clean_w), 
-                min(img_h, y + h + 6)
+                max(0, clean_left), 
+                max(0, y - 6), 
+                min(width, clean_left + clean_width), 
+                min(height, y + h + 8)
             )
             
-            # Sampel warna latar belakang dari sisi kiri teks
+            # Ambil sampel warna latar belakang
             try:
-                sample_color = image.getpixel((max(0, x - 5), y + (h // 2)))
+                sample_color = image.getpixel((max(0, clean_left - 5), y + (h // 2)))
             except Exception:
                 sample_color = (255, 255, 255)
                 
             draw.rectangle(box_coords, fill=sample_color)
             
-            # Gunakan warna teks standar perbankan digital (biru gelap pekat)
-            text_color = (24, 34, 54)
+            # Warna teks biru gelap khas BCA
+            text_color = (13, 37, 63)
             
-            # Render teks baru secara bersih pada koordinat asal
-            draw.text((x, y), new_text, fill=text_color, font=font)
+            # Render teks baru dengan posisi rata tengah yang presisi
+            draw.text((final_x, y), new_text, fill=text_color, font=font)
             
             st.markdown("**🎯 Hasil Tangkapan Layar Termodifikasi Sempurna**")
             st.image(edited_image, use_container_width=True)
@@ -143,7 +178,7 @@ if uploaded_file is not None:
             st.download_button(
                 label="📥 Unduh Hasil Manipulasi (PNG)",
                 data=buf.getvalue(),
-                file_name="clean_receipt_edited.png",
+                file_name="bca_receipt_centered.png",
                 mime="image/png"
             )
     else:
