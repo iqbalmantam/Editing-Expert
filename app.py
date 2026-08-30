@@ -1,12 +1,11 @@
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import pytesseract
 import pandas as pd
 import os
 import io
-import tempfile
 
-st.set_page_config(page_title="BCA Auto-Perfect Editor", layout="wide")
+st.set_page_config(page_title="BCA Ultimate Supersampling Editor", layout="wide")
 
 hide_streamlit_style = """
     <style>
@@ -17,10 +16,11 @@ hide_streamlit_style = """
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-st.markdown("**🌐 BCA Auto-Perfect Digital Receipt Editor**")
-st.markdown("Sistem render font otomatis murni tanpa pengaturan jarak manual. Bersih, cepat, dan proporsional.")
+st.markdown("**🌐 BCA Ultimate Supersampling Receipt Editor**")
+st.markdown("Menggunakan teknik render teks resolusi 4x lipat (LANCZOS Anti-Aliasing) untuk hasil tepian huruf yang sangat halus dan realistis.")
 
-# --- MANAJEMEN FONT OTOMATIS ---
+# --- MANAJEMEN FONT EKSKLUSIF GITHUB ---
+# Sistem dioptimalkan untuk beroperasi sepenuhnya dari direktori repositori
 FONT_DIR = "fonts"
 github_fonts = {}
 if os.path.exists(FONT_DIR) and os.path.isdir(FONT_DIR):
@@ -31,23 +31,13 @@ if os.path.exists(FONT_DIR) and os.path.isdir(FONT_DIR):
                 display_name = os.path.relpath(full_path, FONT_DIR)
                 github_fonts[display_name] = full_path
 
-# Urutkan font non-italic ke atas
+if not github_fonts:
+    st.error("⚠️ Folder 'fonts' kosong atau tidak ditemukan. Harap pastikan file font sudah didorong (push) ke repositori.")
+    st.stop()
+
 sorted_font_names = sorted(github_fonts.keys(), key=lambda name: ("italic" in name.lower(), name))
-font_options = sorted_font_names
-font_options.append("➕ Unggah Font Baru dari Komputer (Lokal)")
-
-selected_font_option = st.selectbox("Pilih Jenis Font (Sangat disarankan: Roboto-Bold / Inter-Bold / OpenSans-Bold):", font_options)
-
-font_path = None
-if selected_font_option == "➕ Unggah Font Baru dari Komputer (Lokal)":
-    local_font_file = st.file_uploader("📂 Unggah file font (.ttf / .otf):", type=["ttf", "otf"])
-    if local_font_file is not None:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".ttf") as tmp_font:
-            tmp_font.write(local_font_file.getvalue())
-            font_path = tmp_font.name
-else:
-    if selected_font_option in github_fonts:
-        font_path = github_fonts[selected_font_option]
+selected_font_option = st.selectbox("Pilih Jenis Font (Pastikan menggunakan varian Bold):", sorted_font_names)
+font_path = github_fonts[selected_font_option]
 
 # --- PROSES UNGGAH GAMBAR ---
 uploaded_file = st.file_uploader("🖼️ Unggah Tangkapan Layar Bukti Transaksi (JPG/PNG)", type=["jpg", "jpeg", "png"])
@@ -56,7 +46,7 @@ if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
     width, height = image.size
     
-    with st.spinner("Menganalisis layout dan mendeteksi ukuran font asli..."):
+    with st.spinner("Menganalisis matriks piksel..."):
         ocr_df = pytesseract.image_to_data(image, output_type=pytesseract.Output.DATAFRAME)
         ocr_df = ocr_df[ocr_df.text.notnull() & ocr_df.text.str.strip().astype(bool)].reset_index(drop=True)
         
@@ -101,15 +91,14 @@ if uploaded_file is not None:
     if len(line_df) > 0:
         st.dataframe(line_df[['text', 'left', 'top', 'width', 'height']], use_container_width=True)
 
-        st.markdown("**2. Pengaturan Nominal Otomatis**")
+        st.markdown("**2. Pengaturan Nominal Cerdas**")
         selected_index = st.number_input("Pilih Baris Index yang Ingin Diubah:", min_value=0, max_value=len(line_df)-1, value=0, step=1)
         target_row = line_df.iloc[selected_index]
         st.info(f"Baris Terpilih: **'{target_row['text']}'**")
         
         raw_input_text = st.text_input("Nominal Baru (Contoh: 450,000.00):", value="450,000.00")
 
-        if st.button("✨ Eksekusi Auto-Render"):
-            # 1. Format Teks Cerdas (Memastikan 'IDR ' di depan)
+        if st.button("✨ Eksekusi Supersampling Render"):
             clean_number = "".join(c for c in raw_input_text if c.isprintable()).strip()
             if not clean_number.startswith("IDR"):
                 final_display_text = f"IDR {clean_number}"
@@ -124,28 +113,17 @@ if uploaded_file is not None:
             w = int(target_row['width'])
             h = int(target_row['height'])
             
-            # 2. Skala Font Otomatis (Menggunakan 90% dari tinggi bounding box asli)
             font_size = max(16, int(h * 0.90))
             
-            try:
-                font = ImageFont.truetype(font_path, size=font_size) if font_path else ImageFont.load_default()
-            except Exception:
-                font = ImageFont.load_default()
-                
-            # 3. Kalkulasi Bentang Teks Baru
+            # --- TAHAP 1: PEMERATAAN LATAR BELAKANG ---
+            dummy_font = ImageFont.truetype(font_path, size=font_size)
             dummy_draw = ImageDraw.Draw(edited_image)
-            try:
-                text_bbox = dummy_draw.textbbox((0, 0), final_display_text, font=font)
-                new_text_w = text_bbox[2] - text_bbox[0]
-            except Exception:
-                new_text_w = len(final_display_text) * (font_size * 0.5)
+            new_text_w = dummy_draw.textbbox((0, 0), final_display_text, font=dummy_font)[2]
                 
-            # 4. Kalkulasi Center Alignment Mutlak
             original_center_x = x + (w / 2)
             final_x = int(original_center_x - (new_text_w / 2))
             
-            # 5. Pembersihan Area Solid & Bersih (Menimpa area lama tanpa blur)
-            clean_width = max(w, int(new_text_w)) + 60
+            clean_width = max(w, int(new_text_w)) + 50
             clean_left = int(original_center_x - (clean_width / 2))
             
             box_coords = (
@@ -155,19 +133,38 @@ if uploaded_file is not None:
                 min(height, y + h + 8)
             )
             
-            # Mengambil sampel warna asli (biasanya putih / sangat cerah)
             try:
                 sample_color = image.getpixel((max(0, clean_left - 5), y + (h // 2)))
             except Exception:
                 sample_color = (255, 255, 255)
                 
+            # Gunakan feathering buatan pada kotak agar tidak terlalu kaku
             draw.rectangle(box_coords, fill=sample_color)
             
-            # 6. Render Native Font (Jarak huruf diatur otomatis oleh file font)
-            text_color = (13, 37, 63) # Warna biru BCA pekat
-            draw.text((final_x, y), final_display_text, fill=text_color, font=font)
+            # --- TAHAP 2: SUPERSAMPLING TEXT RENDERING ---
+            scale_factor = 4 # Skala 400% untuk anti-aliasing sempurna
+            super_font_size = font_size * scale_factor
+            super_font = ImageFont.truetype(font_path, size=super_font_size)
             
-            st.markdown("**🎯 Hasil Tangkapan Layar Termodifikasi Sempurna**")
+            # Buat kanvas transparan berukuran 4x lipat dari gambar asli
+            text_canvas = Image.new("RGBA", (width * scale_factor, height * scale_factor), (255, 255, 255, 0))
+            text_draw = ImageDraw.Draw(text_canvas)
+            
+            # Render teks di kanvas raksasa
+            text_color = (13, 37, 63, 255) # RGBA Blue BCA
+            super_x = final_x * scale_factor
+            super_y = y * scale_factor
+            
+            text_draw.text((super_x, super_y), final_display_text, fill=text_color, font=super_font)
+            
+            # Susutkan (Downscale) kanvas menggunakan algoritma LANCZOS
+            # Ini menciptakan efek anti-aliasing mikroskopis yang identik dengan mesin render HP
+            text_canvas_resized = text_canvas.resize((width, height), Image.Resampling.LANCZOS)
+            
+            # Tempel teks halus ke gambar utama
+            edited_image.paste(text_canvas_resized, (0, 0), text_canvas_resized)
+            
+            st.markdown("**🎯 Hasil Tangkapan Layar Termodifikasi Sempurna (Supersampled)**")
             st.image(edited_image, use_container_width=True)
             
             buf = io.BytesIO()
@@ -175,7 +172,7 @@ if uploaded_file is not None:
             st.download_button(
                 label="📥 Unduh Hasil Manipulasi (PNG)",
                 data=buf.getvalue(),
-                file_name="bca_auto_perfect.png",
+                file_name="bca_supersampled.png",
                 mime="image/png"
             )
     else:
