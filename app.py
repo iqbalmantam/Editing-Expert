@@ -6,7 +6,7 @@ import os
 import tempfile
 import io
 
-st.set_page_config(page_title="BCA Perfect Center Receipt Editor", layout="wide")
+st.set_page_config(page_title="Perfect Center Receipt Editor", layout="wide")
 
 hide_streamlit_style = """
     <style>
@@ -17,10 +17,9 @@ hide_streamlit_style = """
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-st.title("🌐 BCA Perfect Center Digital Receipt Editor")
-st.markdown("Sistem pembersihan latar dan penyelarasan tengah otomatis dengan prioritas font tegak (non-italic).")
+st.title("🌐 Image Editor")
+st.markdown("Edit Text pada Image.")
 
-# Pemilahan font cerdas: Otomatis mendahulukan font tegak (non-italic)
 FONT_DIR = "fonts"
 github_fonts = {}
 if os.path.exists(FONT_DIR) and os.path.isdir(FONT_DIR):
@@ -31,17 +30,15 @@ if os.path.exists(FONT_DIR) and os.path.isdir(FONT_DIR):
                 display_name = os.path.relpath(full_path, FONT_DIR)
                 github_fonts[display_name] = full_path
 
-# Urutkan agar font non-italic berada di urutan teratas pilihan
 sorted_font_names = sorted(github_fonts.keys(), key=lambda name: ("italic" in name.lower(), name))
-
 font_options = sorted_font_names
 font_options.append("➕ Unggah Font Baru dari Komputer (Lokal)")
 
-selected_font_option = st.selectbox("Pilih Jenis Font (Disarankan pilih yang tegak/non-italic):", font_options)
+selected_font_option = st.selectbox("Pilih Jenis Font (Gunakan font standar/regular agar karakter terbaca sempurna):", font_options)
 
 font_path = None
 if selected_font_option == "➕ Unggah Font Baru dari Komputer (Lokal)":
-    local_font_file = st.file_uploader("📂 Unggah file font tegak (.ttf / .otf):", type=["ttf", "otf"])
+    local_font_file = st.file_uploader("📂 Unggah file font (.ttf / .otf):", type=["ttf", "otf"])
     if local_font_file is not None:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".ttf") as tmp_font:
             tmp_font.write(local_font_file.getvalue())
@@ -126,12 +123,15 @@ if uploaded_file is not None:
             
             font_size = max(16, int(h * 0.95))
             
-            try:
-                if font_path:
+            # Pemuatan font dengan pengaman ganda agar terhindar dari karakter kosong
+            font = None
+            if font_path:
+                try:
                     font = ImageFont.truetype(font_path, size=font_size)
-                else:
-                    font = ImageFont.load_default()
-            except Exception:
+                except Exception:
+                    pass
+            
+            if font is None:
                 font = ImageFont.load_default()
                 
             dummy_draw = ImageDraw.Draw(edited_image)
@@ -161,7 +161,7 @@ if uploaded_file is not None:
                 
             draw.rectangle(box_coords, fill=sample_color)
             
-            text_color = (13, 37, 63) # Warna biru gelap pekat khas BCA
+            text_color = (13, 37, 63)
             
             draw.text((final_x, y), new_text, fill=text_color, font=font)
             
